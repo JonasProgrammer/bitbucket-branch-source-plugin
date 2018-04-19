@@ -65,127 +65,131 @@ public class PushHookProcessor extends HookProcessor {
             } else {
                 push = BitbucketCloudWebhookPayload.pushEventFromPayload(payload);
             }
-            if (push != null) {
-                String owner = push.getRepository().getOwnerName();
-                final String repository = push.getRepository().getRepositoryName();
-                if (push.getChanges().isEmpty()) {
-                    LOGGER.log(Level.INFO, "Received hook from Bitbucket. Processing push event on {0}/{1}",
-                            new Object[]{owner, repository});
-                    scmSourceReIndex(owner, repository);
-                } else {
-                    SCMHeadEvent.Type type = null;
-                    for (BitbucketPushEvent.Change change: push.getChanges()) {
-                        if ((type == null || type == SCMEvent.Type.CREATED) && change.isCreated()) {
-                            type = SCMEvent.Type.CREATED;
-                        } else if ((type == null || type == SCMEvent.Type.REMOVED) && change.isClosed()) {
-                            type = SCMEvent.Type.REMOVED;
-                        } else {
-                            type = SCMEvent.Type.UPDATED;
-                        }
+            processPushEvent(origin, push);
+        }
+    }
+
+    protected void processPushEvent(final String origin, final BitbucketPushEvent push) {
+        if (push != null) {
+            String owner = push.getRepository().getOwnerName();
+            final String repository = push.getRepository().getRepositoryName();
+            if (push.getChanges().isEmpty()) {
+                LOGGER.log(Level.INFO, "Received hook from Bitbucket. Processing push event on {0}/{1}",
+                           new Object[]{owner, repository});
+                scmSourceReIndex(owner, repository);
+            } else {
+                SCMHeadEvent.Type type = null;
+                for (BitbucketPushEvent.Change change: push.getChanges()) {
+                    if ((type == null || type == SCMEvent.Type.CREATED) && change.isCreated()) {
+                        type = SCMEvent.Type.CREATED;
+                    } else if ((type == null || type == SCMEvent.Type.REMOVED) && change.isClosed()) {
+                        type = SCMEvent.Type.REMOVED;
+                    } else {
+                        type = SCMEvent.Type.UPDATED;
                     }
-                    SCMHeadEvent.fireNow(new SCMHeadEvent<BitbucketPushEvent>(type, push, origin) {
-                        @Override
-                        public boolean isMatch(@NonNull SCMNavigator navigator) {
-                            if (!(navigator instanceof BitbucketSCMNavigator)) {
-                                return false;
-                            }
-                            BitbucketSCMNavigator bbNav = (BitbucketSCMNavigator) navigator;
-                            if (!isServerUrlMatch(bbNav.getServerUrl())) {
-                                return false;
-                            }
-                            return bbNav.getRepoOwner().equalsIgnoreCase(getPayload().getRepository().getOwnerName());
-                        }
-
-                        private boolean isServerUrlMatch(String serverUrl) {
-                            if (serverUrl == null || BitbucketCloudEndpoint.SERVER_URL.equals(serverUrl)) {
-                                // this is a Bitbucket cloud navigator
-                                if (getPayload() instanceof BitbucketServerPushEvent) {
-                                    return false;
-                                }
-                            } else {
-                                // this is a Bitbucket server navigator
-                                if (getPayload() instanceof BitbucketCloudPushEvent) {
-                                    return false;
-                                }
-                                Map<String, List<BitbucketHref>> links = getPayload().getRepository().getLinks();
-                                if (links != null && links.containsKey("self")) {
-                                    boolean matches = false;
-                                    for (BitbucketHref link : links.get("self")) {
-                                        try {
-                                            URI navUri = new URI(serverUrl);
-                                            URI evtUri = new URI(link.getHref());
-                                            if (navUri.getHost().equalsIgnoreCase(evtUri.getHost())) {
-                                                matches = true;
-                                                break;
-                                            }
-                                        } catch (URISyntaxException e) {
-                                            // ignore
-                                        }
-                                    }
-                                    return matches;
-                                }
-                            }
-                            return true;
-                        }
-
-                        @NonNull
-                        @Override
-                        public String getSourceName() {
-                            return getPayload().getRepository().getRepositoryName();
-                        }
-
-                        @NonNull
-                        @Override
-                        public Map<SCMHead, SCMRevision> heads(@NonNull SCMSource source) {
-                            if (!(source instanceof BitbucketSCMSource)) {
-                                return Collections.emptyMap();
-                            }
-                            BitbucketSCMSource src = (BitbucketSCMSource) source;
-                            if (!isServerUrlMatch(src.getServerUrl())) {
-                                return Collections.emptyMap();
-                            }
-                            if (!src.getRepoOwner().equalsIgnoreCase(getPayload().getRepository().getOwnerName())) {
-                                return Collections.emptyMap();
-                            }
-                            if (!src.getRepository().equalsIgnoreCase(getPayload().getRepository().getRepositoryName())) {
-                                return Collections.emptyMap();
-                            }
-                            BitbucketRepositoryType type = BitbucketRepositoryType.fromString(
-                                    getPayload().getRepository().getScm());
-                            if (type == null) {
-                                LOGGER.log(Level.INFO, "Received event for unknown repository type: {0}",
-                                        getPayload().getRepository().getScm());
-                                return Collections.emptyMap();
-                            }
-                            Map<SCMHead, SCMRevision> result = new HashMap<>();
-                            for (BitbucketPushEvent.Change change: getPayload().getChanges()) {
-                                if (change.isClosed()) {
-                                    result.put(new BranchSCMHead(change.getOld().getName(), type), null);
-                                } else {
-                                    BranchSCMHead head = new BranchSCMHead(change.getNew().getName(), type);
-                                    switch (type) {
-                                        case GIT:
-                                            result.put(head, new AbstractGitSCMSource.SCMRevisionImpl(head, change.getNew().getTarget().getHash()));
-                                            break;
-                                        case MERCURIAL:
-                                            result.put(head, new BitbucketSCMSource.MercurialRevision(head, change.getNew().getTarget().getHash()));
-                                            break;
-                                        default:
-                                            LOGGER.log(Level.INFO, "Received event for unknown repository type: {0}", type);
-                                            break;
-                                    }
-                                }
-                            }
-                            return result;
-                        }
-
-                        @Override
-                        public boolean isMatch(@NonNull SCM scm) {
-                            // TODO
+                }
+                SCMHeadEvent.fireNow(new SCMHeadEvent<BitbucketPushEvent>(type, push, origin) {
+                    @Override
+                    public boolean isMatch(@NonNull SCMNavigator navigator) {
+                        if (!(navigator instanceof BitbucketSCMNavigator)) {
                             return false;
                         }
-                    });
-                }
+                        BitbucketSCMNavigator bbNav = (BitbucketSCMNavigator) navigator;
+                        if (!isServerUrlMatch(bbNav.getServerUrl())) {
+                            return false;
+                        }
+                        return bbNav.getRepoOwner().equalsIgnoreCase(getPayload().getRepository().getOwnerName());
+                    }
+
+                    private boolean isServerUrlMatch(String serverUrl) {
+                        if (serverUrl == null || BitbucketCloudEndpoint.SERVER_URL.equals(serverUrl)) {
+                            // this is a Bitbucket cloud navigator
+                            if (getPayload() instanceof BitbucketServerPushEvent) {
+                                return false;
+                            }
+                        } else {
+                            // this is a Bitbucket server navigator
+                            if (getPayload() instanceof BitbucketCloudPushEvent) {
+                                return false;
+                            }
+                            Map<String, List<BitbucketHref>> links = getPayload().getRepository().getLinks();
+                            if (links != null && links.containsKey("self")) {
+                                boolean matches = false;
+                                for (BitbucketHref link : links.get("self")) {
+                                    try {
+                                        URI navUri = new URI(serverUrl);
+                                        URI evtUri = new URI(link.getHref());
+                                        if (navUri.getHost().equalsIgnoreCase(evtUri.getHost())) {
+                                            matches = true;
+                                            break;
+                                        }
+                                    } catch (URISyntaxException e) {
+                                        // ignore
+                                    }
+                                }
+                                return matches;
+                            }
+                        }
+                        return true;
+                    }
+
+                    @NonNull
+                    @Override
+                    public String getSourceName() {
+                        return getPayload().getRepository().getRepositoryName();
+                    }
+
+                    @NonNull
+                    @Override
+                    public Map<SCMHead, SCMRevision> heads(@NonNull SCMSource source) {
+                        if (!(source instanceof BitbucketSCMSource)) {
+                            return Collections.emptyMap();
+                        }
+                        BitbucketSCMSource src = (BitbucketSCMSource) source;
+                        if (!isServerUrlMatch(src.getServerUrl())) {
+                            return Collections.emptyMap();
+                        }
+                        if (!src.getRepoOwner().equalsIgnoreCase(getPayload().getRepository().getOwnerName())) {
+                            return Collections.emptyMap();
+                        }
+                        if (!src.getRepository().equalsIgnoreCase(getPayload().getRepository().getRepositoryName())) {
+                            return Collections.emptyMap();
+                        }
+                        BitbucketRepositoryType type = BitbucketRepositoryType.fromString(
+                                getPayload().getRepository().getScm());
+                        if (type == null) {
+                            LOGGER.log(Level.INFO, "Received event for unknown repository type: {0}",
+                                    getPayload().getRepository().getScm());
+                            return Collections.emptyMap();
+                        }
+                        Map<SCMHead, SCMRevision> result = new HashMap<>();
+                        for (BitbucketPushEvent.Change change: getPayload().getChanges()) {
+                            if (change.isClosed()) {
+                                result.put(new BranchSCMHead(change.getOld().getName(), type), null);
+                            } else {
+                                BranchSCMHead head = new BranchSCMHead(change.getNew().getName(), type);
+                                switch (type) {
+                                    case GIT:
+                                        result.put(head, new AbstractGitSCMSource.SCMRevisionImpl(head, change.getNew().getTarget().getHash()));
+                                        break;
+                                    case MERCURIAL:
+                                        result.put(head, new BitbucketSCMSource.MercurialRevision(head, change.getNew().getTarget().getHash()));
+                                        break;
+                                    default:
+                                        LOGGER.log(Level.INFO, "Received event for unknown repository type: {0}", type);
+                                        break;
+                                }
+                            }
+                        }
+                        return result;
+                    }
+
+                    @Override
+                    public boolean isMatch(@NonNull SCM scm) {
+                        // TODO
+                        return false;
+                    }
+                });
             }
         }
     }
