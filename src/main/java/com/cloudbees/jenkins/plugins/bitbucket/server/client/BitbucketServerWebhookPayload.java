@@ -26,7 +26,7 @@ package com.cloudbees.jenkins.plugins.bitbucket.server.client;
 import com.cloudbees.jenkins.plugins.bitbucket.JsonParser;
 import com.cloudbees.jenkins.plugins.bitbucket.api.BitbucketPullRequestEvent;
 import com.cloudbees.jenkins.plugins.bitbucket.api.BitbucketPushEvent;
-import com.cloudbees.jenkins.plugins.bitbucket.server.events.BitbucketServer54RefChangeEvent;
+import com.cloudbees.jenkins.plugins.bitbucket.server.events.BitbucketServer54RefsChangedEvent;
 import com.cloudbees.jenkins.plugins.bitbucket.server.events.BitbucketServerPullRequestEvent;
 import com.cloudbees.jenkins.plugins.bitbucket.server.events.BitbucketServerPushEvent;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
@@ -63,7 +63,7 @@ public class BitbucketServerWebhookPayload {
     @CheckForNull
     public static BitbucketPushEvent refChangeEventFromPayload(@NonNull String payload) {
         try {
-            return JsonParser.toJava(payload, BitbucketServer54RefChangeEvent.class);
+            return JsonParser.toJava(payload, BitbucketServer54RefsChangedEvent.class);
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Can not read hook payload", e);
         }

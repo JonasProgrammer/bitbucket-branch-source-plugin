@@ -26,7 +26,7 @@ package com.cloudbees.jenkins.plugins.bitbucket.hooks;
 import com.cloudbees.jenkins.plugins.bitbucket.api.BitbucketPushEvent;
 import com.cloudbees.jenkins.plugins.bitbucket.server.client.BitbucketServerWebhookPayload;
 
-public class RefChangeHookProcessor extends PushHookProcessor {
+public class RefsChangedHookProcessor extends PushHookProcessor {
     @Override
     public void process(HookEventType hookEvent, String payload, BitbucketType instanceType, String origin) {
         if (payload != null) {

@@ -33,7 +33,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class BitbucketServer54RefChangeEvent implements BitbucketPushEvent {
+public class BitbucketServer54RefsChangedEvent implements BitbucketPushEvent {
 
     private BitbucketServerRepository repository;
 
